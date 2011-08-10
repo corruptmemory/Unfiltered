@@ -4,7 +4,7 @@ import Scalaz._
 import unfiltered.request._
 
 sealed abstract class RequestMonad[T,R] {
-  self => 
+  self =>
   import RequestLogger._
   import LogLevel._
 

@@ -31,6 +31,8 @@ object DefaultConversions {
   }
 }
 
+/** Parameter combinators
+ */
 class ParamOps(val params:Map[String,Seq[String]]) {
   self => 
   import RequestLogger._, RequestError._
