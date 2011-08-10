@@ -1,3 +1,4 @@
+
 package unfiltered.netty
 
 import unfiltered.JIteratorIterator
@@ -49,6 +50,7 @@ private [netty] class RequestBinding(msg: ReceivedMessage) extends HttpRequest(m
   }
   def method = req.getMethod.toString.toUpperCase
 
+  // todo should we call URLDecoder.decode(uri, charset) on this here?
   def uri = req.getUri
 
   def parameterNames = params.keySet.iterator
@@ -93,7 +95,7 @@ case class ReceivedMessage(
     val keepAlive = HttpHeaders.isKeepAlive(request)
     val closer = new unfiltered.response.Responder[NHttpResponse] {
       def respond(res: HttpResponse[NHttpResponse]) {
-        res.getOutputStream.close()
+        res.outputStream.close()
         (
           if (keepAlive)
             unfiltered.response.Connection("Keep-Alive") ~>
@@ -115,24 +117,22 @@ case class ReceivedMessage(
 
 private [netty] class ResponseBinding[U <: NHttpResponse](res: U)
     extends HttpResponse(res) {
-  private lazy val outputStream = new ByteArrayOutputStream {
+  private lazy val byteOutputStream = new ByteArrayOutputStream {
     override def close = {
       res.setContent(ChannelBuffers.copiedBuffer(this.toByteArray))
     }
   }
-  private lazy val writer = new PrintWriter(new OutputStreamWriter(outputStream, HttpConfig.DEFAULT_CHARSET))
 
-  def setContentType(contentType: String) = res.setHeader(HttpHeaders.Names.CONTENT_TYPE, contentType)
-  def setStatus(statusCode: Int) = res.setStatus(HttpResponseStatus.valueOf(statusCode))
-  def addHeader(name: String, value: String) = res.addHeader(name, value)
+  def status(statusCode: Int) =
+    res.setStatus(HttpResponseStatus.valueOf(statusCode))
+  def header(name: String, value: String) = res.addHeader(name, value)
 
-  def sendRedirect(url: String) = {
+  def redirect(url: String) = {
     res.setStatus(HttpResponseStatus.FOUND)
     res.setHeader(HttpHeaders.Names.LOCATION, url)
   }
 
-  def getWriter() = writer
-  def getOutputStream() = outputStream
+  def outputStream = byteOutputStream
 
   def cookies(resCookies: Seq[Cookie]) = {
     import org.jboss.netty.handler.codec.http.{DefaultCookie, CookieEncoder}
