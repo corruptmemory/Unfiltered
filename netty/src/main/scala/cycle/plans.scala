@@ -12,7 +12,6 @@ import unfiltered.Cycle.Intent.complete
 
 object Plan {
   type Intent = unfiltered.Cycle.Intent[ReceivedMessage,NHttpResponse]
-  val executor = java.util.concurrent.Executors.newCachedThreadPool()
 }
 /** Object to facilitate Plan.Intent definitions. Type annotations
  *  are another option. */
@@ -27,20 +26,24 @@ trait Plan extends SimpleChannelUpstreamHandler {
       case req:NHttpRequest => req
       case msg => error("Unexpected message type from upstream: %s" format msg)
     }
-    val requestBinding = new RequestBinding(ReceivedMessage(request, ctx, e))
-    complete(intent)(requestBinding) match {
-      case Pass => ctx.sendUpstream(e)
-      case responseFunction =>
-        Plan.executor.submit(new Runnable {
-          def run {
+    val requestBinding =
+      new RequestBinding(ReceivedMessage(request, ctx, e))
+    executeIntent {
+      intent.lift(requestBinding).getOrElse(Pass) match {
+        case Pass => ctx.sendUpstream(e)
+        case responseFunction =>
+          executeResponse {
             requestBinding.underlying.respond(responseFunction)
           }
-        })
+      }
     }
   }
+  def executeIntent(thunk: => Unit)
+  def executeResponse(thunk: => Unit)
+  def shutdown()
 }
 
-class Planify(val intent: Plan.Intent) extends Plan
+class Planify(val intent: Plan.Intent) extends Plan with ThreadPool
 
 object Planify {
   def apply(intent: Plan.Intent) = new Planify(intent)

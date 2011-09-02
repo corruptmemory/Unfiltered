@@ -7,13 +7,6 @@ object ResourcesSpec extends unfiltered.spec.netty.Served {
    import dispatch._
    import unfiltered.netty.{Http => NHttp}
 
-   // todo: roll this into the base spec helpers
-   def http[T](handler: dispatch.Handler[T]): T = {
-     val h = new Http
-     try { h(handler) }
-     finally { h.shutdown() }
-   }
-
    // todo: roll this into the base spec helper
    def xhttp[T](handler: dispatch.Handler[T]): T  = {
      val h = new Http
@@ -57,6 +50,19 @@ object ResourcesSpec extends unfiltered.spec.netty.Served {
      }
      "respond with BadRequest (400) with a non GET request" in  {
        xhttp(host.POST / "foo.css" statuscode) must be_==(400)
+     }
+     "respond with a NotModified (304) with a If-Modified-Since matches resources lastModified time" in {
+       import java.util.{Calendar, Date, GregorianCalendar}
+       import java.io.File
+       val rsrc = new File(getClass().getResource("/files/foo.css").getFile)
+       val cal = new GregorianCalendar()
+       cal.setTime(new Date(rsrc.lastModified))
+       val ifmodsince = Map(
+         "If-Modified-Since" -> Dates.format(cal.getTime))
+       xhttp(host / "foo.css" <:< ifmodsince statuscode) must be_==(304)
+       xhttp(host / "foo.css" <:< ifmodsince >:> { h => h }) must notHavePair(
+         "Connection" -> "keep-alive"
+       )
      }
    }
 }

@@ -1,4 +1,3 @@
-
 package unfiltered.netty
 
 import unfiltered.util.RunnableServer
@@ -13,19 +12,27 @@ import group.{ChannelGroup, DefaultChannelGroup}
 import unfiltered._
 import java.util.concurrent.atomic.AtomicInteger
 
-/** Default implementation of the Server trait. If you want to use a custom pipeline
- * factory it's better to extend Server directly. */
-case class Http(port: Int, host: String,
+/** Default implementation of the Server trait. If you want to use a
+ * custom pipeline factory it's better to extend Server directly. */
+final case class Http(port: Int, host: String,
                 handlers: List[ChannelHandler],
-                beforeStopBlock: () => Unit) extends Server with RunnableServer {
-  def pipelineFactory: ChannelPipelineFactory = new ServerPipelineFactory(channels, handlers)
+                beforeStopBlock: () => Unit)
+extends Server
+with RunnableServer
+with unfiltered.util.Server[ChannelHandler] { self =>
+  def pipelineFactory: ChannelPipelineFactory =
+    new ServerPipelineFactory(channels, handlers)
 
   def stop() = {
     beforeStopBlock()
-    cycle.Plan.executor.shutdown()
+    handlers.foreach {
+      case handler: cycle.Plan => handler.shutdown()
+      case _ => ()
+    }
     closeConnections()
     destroy()
   }
+  def plan(plan: ChannelHandler) = handler(plan)
   def handler(h: ChannelHandler) =
     Http(port, host, h :: handlers, beforeStopBlock)
   def beforeStop(block: => Unit) =
@@ -54,9 +61,6 @@ trait Server extends RunnableServer {
   val url =  "http://%s:%d/" format(host, port)
   protected def pipelineFactory: ChannelPipelineFactory
 
-  val DEFAULT_IO_THREADS = Runtime.getRuntime().availableProcessors() + 1;
-  val DEFAULT_EVENT_THREADS = DEFAULT_IO_THREADS * 4;
-
   private var bootstrap: ServerBootstrap = _
 
   /** any channels added to this will receive broadcasted events */
@@ -65,8 +69,10 @@ trait Server extends RunnableServer {
   def start(): this.type = {
     bootstrap = new ServerBootstrap(
       new NioServerSocketChannelFactory(
-        Executors.newFixedThreadPool(DEFAULT_IO_THREADS),
-        Executors.newFixedThreadPool(DEFAULT_EVENT_THREADS)))
+        Executors.newCachedThreadPool(),
+        Executors.newCachedThreadPool()
+      )
+    )
     bootstrap.setPipelineFactory(pipelineFactory)
 
     bootstrap.setOption("child.tcpNoDelay", true)
