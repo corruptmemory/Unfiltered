@@ -34,7 +34,7 @@ object DefaultConversions {
 /** Parameter combinators
  */
 class ParamOps(val params:Map[String,Seq[String]]) {
-  self => 
+  self =>
   import RequestLogger._, RequestError._
   import LogLevel._
   import DefaultConversions._
@@ -49,7 +49,7 @@ class ParamOps(val params:Map[String,Seq[String]]) {
   }
 
   def optional[T](key:String,
-                  conversionErrorMessage:(String,String,String)=>String = defaultConversionMessage _)(implicit c:Conversion[T], m:Manifest[T]):RequestLogger[Option[T]] = 
+                  conversionErrorMessage:(String,String,String)=>String = defaultConversionMessage _)(implicit c:Conversion[T], m:Manifest[T]):RequestLogger[Option[T]] =
     mkRequestLogger { (allCatch.either(params
                                        .get(key)
                                        .map(x => c.to(x.head)))
@@ -65,7 +65,7 @@ class ParamOps(val params:Map[String,Seq[String]]) {
   }
 
   def optionalSeq[T](key:String,
-                     conversionErrorMessage:(String,String,String)=>String = defaultConversionMessage _)(implicit c:Conversion[T], m:Manifest[T]):RequestLogger[Option[Seq[T]]] = 
+                     conversionErrorMessage:(String,String,String)=>String = defaultConversionMessage _)(implicit c:Conversion[T], m:Manifest[T]):RequestLogger[Option[Seq[T]]] =
     mkRequestLogger { (allCatch.either(params
                                        .get(key)
                                        .map(x => c.toSeq(x)))
@@ -95,19 +95,19 @@ object ParamOps {
 
   def applyValidation[T](value:T,body:T => Validation[ERRORS[RequestError],T]):Validation[ERRORS[RequestError],T] = body(value)
 
-  def is[T](message:String)(body:T => Boolean):T => Validation[ERRORS[RequestError],T] = {
-    x => {
-      allCatch.either(body(x)) match {
-        case Left(t) => t.uncaught
-        case Right(true) => x.success
-        case Right(false) => message.invalid
-      }
-    }
-  }
-
   class ParamOpsW[T](rl:RequestLogger[T]) {
     def check(body:T => Validation[ERRORS[RequestError],T]):RequestLogger[T] =
       rl.copy(over = rl.over.flatMap(x => applyValidation(x,body)))
+
+    def is[T](message:String)(body:T => Boolean):T => Validation[ERRORS[RequestError],T] = {
+      x => {
+        allCatch.either(body(x)) match {
+          case Left(t) => t.uncaught
+          case Right(true) => x.success
+          case Right(false) => message.invalid
+        }
+      }
+    }
   }
 
   class SeqParamOpsW[T](rl:RequestLogger[Seq[T]]) {
