@@ -18,8 +18,10 @@ milliseconds it could take to perform that request.
 
 ### Always Sunny in...
 
-Google has a "secret" web API. Let's use that until they take it
-offline.
+Google has a [secret][weather] weather API. Let's use that until
+they take it offline.
+
+[weather]: http://blog.programmableweb.com/2010/02/08/googles-secret-weather-api/
 
 ```scala
 import dispatch._
@@ -38,7 +40,7 @@ h(weather("San+Francisco") >- { x => println(x) })
 You may notice that the prompt for the next command appears before
 the response is printed. It's working!
 
-### Asyncrazy Temperature Server
+### Taking the Temperature
 
 Now all we have to do is consume this service from a server.
 
@@ -58,4 +60,14 @@ val temp = async.Planify {
 }
 
 Http(8080).plan(temp).run()
+```
+
+Pasting all that into a console should start up a server that always
+gives you the temperature in San Francisco (the closest city by that
+name to Google's headquarters, anyway). When you are done with this
+hardcoded showpiece, shut down the Dispatch executor it was using so we
+can move on real deal.
+
+```scala
+h.shutdown()
 ```
