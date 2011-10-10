@@ -24,19 +24,11 @@ object Shared {
     "net.databinder" %% "dispatch-oauth" % dispatchVersion
 
   def integrationTestDeps(sv: String) = (specsDep(sv) :: dispatchDeps) map { _ % "test" }
-
-  lazy val publishSetting = publishTo <<= (version) {
-    version: String =>
-      val isSnapshot = version.trim.endsWith("SNAPSHOT")
-      val repo   = if(isSnapshot) (Resolver.file("snapshots", file("/"+Path.userHome.toString+"/.ivy2/local")))
-                   else (Resolver.file("releases",file("/"+Path.userHome.toString + "/Unfiltered-pages/repository")))
-      Some(repo)
-  }
 }
 
 object Unfiltered extends Build {
   import Shared._
-  val scalazVersion = "6.0.2"
+  val scalazVersion = "6.0.3"
 
   def id(name: String) = "unfiltered-%s" format name
 
@@ -44,13 +36,11 @@ object Unfiltered extends Build {
 
   val buildSettings = Defaults.defaultSettings ++ Seq(
     organization := "net.databinder",
-    name := "Unfiltered",
     version := "0.5.2-jmp-SNAPSHOT",
     crossScalaVersions := Seq("2.8.0", "2.8.1", "2.8.2",
                               "2.9.0", "2.9.0-1", "2.9.1"),
     scalaVersion := "2.9.1",
-    // publishTo := Some("Scala Tools Nexus" at "http://nexus.scala-tools.org/content/repositories/releases/"),
-    publishSetting,
+    publishTo := Some("Scala Tools Nexus" at "http://nexus.scala-tools.org/content/repositories/releases/"),
     credentials += Credentials(Path.userHome / ".ivy2" / ".credentials"),
     scalacOptions ++= Seq("-Xcheckinit", "-encoding", "utf8"),
     parallelExecution in Test := false // :( test servers collide on same port
