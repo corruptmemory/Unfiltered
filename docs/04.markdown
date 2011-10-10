@@ -18,13 +18,14 @@ names are as follows:
 
 * unfiltered_$scala$
 * unfiltered-filter_$scala$
+* unfiltered-filter-async_$scala$
 * unfiltered-netty_$scala$
-* unfiltered-websockets_$scala$
+* unfiltered-netty-websockets_$scala$
 * unfiltered-jetty_$scala$
 * unfiltered-jetty-ajp_$scala$
 * unfiltered-netty-server_$scala$
 * unfiltered-uploads_$scala$
-* unfiltered-utils_$scala$
+* unfiltered-util_$scala$
 * unfiltered-spec_$scala$
 * unfiltered-scalatest_$scala$
 * unfiltered-json_$scala$
@@ -38,7 +39,7 @@ names are as follows:
 
 With **simple-build-tool** it's best to have the Scala version
 [automatically appended][sbt] so it will always match your
-project's. In an sbt 0.10.x project:
+project's. In an sbt 0.11.x project:
 
 ```scala
 libraryDependencies += "net.databinder" %% "unfiltered-filter" % "$version$"
@@ -68,7 +69,7 @@ So for example:
 ```sh
 g8 n8han/unfiltered-netty --name=justplayin
 cd justplayin
-sbt # *or whatever your 0.10.x command is
+sbt # *or whatever your 0.11.x command is
 > run
 ```
 
