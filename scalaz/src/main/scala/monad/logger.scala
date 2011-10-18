@@ -17,9 +17,7 @@ case class Invalid(message:String,exception:Option[Throwable] = None) extends Re
 case class Uncaught(exception:Throwable) extends RequestError
 
 object RequestError {
-  implicit def toFullValidation[R](in:Validation[RequestError,R]):Validation[RequestLogger.ERRORS[RequestError],R] =
-    in.fold(failure = f => f.pure[RequestLogger.ERRORS].fail,
-            success = s => s.success)
+  implicit def toFullValidationNEL[R](in:Validation[RequestError,R]):ValidationNEL[RequestError,R] = in.liftFailNel
 
   implicit def RequestErrorShow: Show[RequestError] = new Show[RequestError] {
     def show(a: RequestError) = a.toString.toList
@@ -36,12 +34,12 @@ object RequestError {
   }
 
   class RequestErrorW(message:String) {
-    def missing[R]:Validation[RequestLogger.ERRORS[RequestError],R] = Missing(message).fail[R]
-    def invalid[R](implicit exception:Option[Throwable]):Validation[RequestLogger.ERRORS[RequestError],R] = Invalid(message,exception).fail[R]
+    def missing[R]:ValidationNEL[RequestError,R] = Missing(message).fail[R]
+    def invalid[R](implicit exception:Option[Throwable]):ValidationNEL[RequestError,R] = Invalid(message,exception).fail[R]
   }
 
   class RequestErrorEW(exception:Throwable) {
-    def uncaught[R]:Validation[RequestLogger.ERRORS[RequestError],R] = Uncaught(exception).fail[R]
+    def uncaught[R]:ValidationNEL[RequestError,R] = Uncaught(exception).fail[R]
   }
 
   implicit def stringToRE(message:String):RequestErrorW = new RequestErrorW(message)
@@ -68,7 +66,7 @@ object LogLevel {
 
 }
 
-sealed case class RequestLogger[R](log: RequestLogger.LOG[LogLevel], over: Validation[RequestLogger.ERRORS[RequestError],R]) extends NewType[Writer[IndSeq[LogLevel], Validation[NonEmptyList[RequestError],R]]] {
+sealed case class RequestLogger[R](log: RequestLogger.LOG[LogLevel], over: ValidationNEL[RequestError,R]) extends NewType[Writer[IndSeq[LogLevel], ValidationNEL[RequestError,R]]] {
   import LogLevel._
   import RequestLogger._
   import FingerTree._
@@ -115,7 +113,7 @@ sealed case class RequestLogger[R](log: RequestLogger.LOG[LogLevel], over: Valid
   /**
    * Append the given value to the current log by applying to the underlying value.
    */
-  def :->>(e:Validation[ERRORS[RequestError],R] => LogLevel): RequestLogger[R] =
+  def :->>(e:ValidationNEL[RequestError,R] => LogLevel): RequestLogger[R] =
     :+->(e(over))
 
   /**
@@ -127,7 +125,7 @@ sealed case class RequestLogger[R](log: RequestLogger.LOG[LogLevel], over: Valid
   /**
    * Prepend the given value to the current log by applying to the underlying value.
    */
-  def <<-:(e:Validation[ERRORS[RequestError],R] => LogLevel): RequestLogger[R] =
+  def <<-:(e:ValidationNEL[RequestError,R] => LogLevel): RequestLogger[R] =
     <-+:(e(over))
 
   /**
@@ -139,7 +137,7 @@ sealed case class RequestLogger[R](log: RequestLogger.LOG[LogLevel], over: Valid
   /**
    * Append the given value to the current log by applying to the underlying value.
    */
-  def :+->>(e:Validation[ERRORS[RequestError],R] => LOG[LogLevel]): RequestLogger[R] =
+  def :+->>(e:ValidationNEL[RequestError,R] => LOG[LogLevel]): RequestLogger[R] =
     withLog(_ |+| e(over))
 
   /**
@@ -151,7 +149,7 @@ sealed case class RequestLogger[R](log: RequestLogger.LOG[LogLevel], over: Valid
   /**
    * Prepend the given value to the current log by applying to the underlying value.
    */
-  def <<-+:(e:Validation[ERRORS[RequestError],R] => LOG[LogLevel]): RequestLogger[R] =
+  def <<-+:(e:ValidationNEL[RequestError,R] => LOG[LogLevel]): RequestLogger[R] =
     <-++:(e(over))
 
   /**
@@ -214,7 +212,7 @@ sealed case class RequestLogger[R](log: RequestLogger.LOG[LogLevel], over: Valid
   def printFlushEachLog: RequestLogger[R] =
     flushEachLog(_.println)
 
-  def ifMissing(r: => Validation[ERRORS[RequestError],R]):RequestLogger[R] =
+  def ifMissing(r: => ValidationNEL[RequestError,R]):RequestLogger[R] =
     over.fold(failure = f => f.head match {
       case Missing(_) => RequestLogger[R](RequestLogger.this.log,r)
       case _ => this
@@ -222,11 +220,11 @@ sealed case class RequestLogger[R](log: RequestLogger.LOG[LogLevel], over: Valid
               success = _ => this)
 
 
-  def orElse(r: => Validation[ERRORS[RequestError],R]):RequestLogger[R] =
+  def orElse(r: => ValidationNEL[RequestError,R]):RequestLogger[R] =
     over.fold(failure = _ => RequestLogger[R](RequestLogger.this.log,r),
               success = _ => this)
 
-  def orElseAndLog(r: => Validation[ERRORS[RequestError],R])(implicit toLog: RequestError => LogLevel):RequestLogger[R] = {
+  def orElseAndLog(r: => ValidationNEL[RequestError,R])(implicit toLog: RequestError => LogLevel):RequestLogger[R] = {
     over.fold(failure = f => RequestLogger[R](f.foldl(RequestLogger.this.log)((s,v) => s |+| toLog(v).pure[LOG]),r),
               success = _ => this)
 
@@ -235,7 +233,6 @@ sealed case class RequestLogger[R](log: RequestLogger.LOG[LogLevel], over: Valid
 
 object RequestLogger {
   type LOG[C] = IndSeq[C]
-  type ERRORS[C] = NonEmptyList[C]
   import LogLevel._
   import FingerTree._
   import RequestError._
@@ -259,7 +256,7 @@ object RequestLogger {
       val w2 = a.value
       // Hrm.  Had to do it this way, some implicit conversion failure somehwhere.
       RequestLogger[B](w1.written |+| w2.written,
-                       ValidationApply[ERRORS[RequestError]].apply(w1.over,w2.over))
+                       ValidationApply[NonEmptyList[RequestError]].apply(w1.over,w2.over))
     }
   }
 
@@ -312,6 +309,6 @@ object RequestLogger {
 trait RequestLoggers {
   import RequestLogger._
 
-  def mkRequestLogger[R](a:Validation[ERRORS[RequestError],R],log:LOG[LogLevel] = ∅[LOG[LogLevel]]) =
+  def mkRequestLogger[R](a:ValidationNEL[RequestError,R],log:LOG[LogLevel] = ∅[LOG[LogLevel]]) =
     RequestLogger[R](log,a)
 }

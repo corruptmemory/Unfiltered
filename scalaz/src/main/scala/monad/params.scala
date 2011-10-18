@@ -4,33 +4,6 @@ import Scalaz._
 import unfiltered.request._
 import scala.util.control.Exception._
 
-trait Conversion[T] {
-  def to(in:String):T
-  def toSeq(in:Seq[String]):Seq[T]
-}
-
-object DefaultConversions {
-  implicit val stringConversions = new Conversion[String] {
-    def to(in:String):String = in
-    def toSeq(in:Seq[String]):Seq[String] = in
-  }
-
-  implicit val intConversions = new Conversion[Int] {
-    def to(in:String):Int = in.toInt
-    def toSeq(in:Seq[String]):Seq[Int] = in.map(_.toInt)
-  }
-
-  implicit val doubleConversions = new Conversion[Double] {
-    def to(in:String):Double = in.toDouble
-    def toSeq(in:Seq[String]):Seq[Double] = in.map(_.toDouble)
-  }
-
-  implicit val boolConversions = new Conversion[Boolean] {
-    def to(in:String):Boolean = in.toBoolean
-    def toSeq(in:Seq[String]):Seq[Boolean] = in.map(_.toBoolean)
-  }
-}
-
 /** Parameter combinators
  */
 class ParamOps(val params:Map[String,Seq[String]]) {
@@ -39,39 +12,25 @@ class ParamOps(val params:Map[String,Seq[String]]) {
   import LogLevel._
   import DefaultConversions._
   import ParamOps._
+  import Conversion._
 
   def required[T](key:String,
                   noValueErrorMessage:String => String = defaultNoValueMessage _,
-                  conversionErrorMessage:(String,String,String)=>String = defaultConversionMessage _)(implicit c:Conversion[T], m:Manifest[T]):RequestLogger[T] = mkRequestLogger {
-    (params.get(key).map {
-      x => allCatch.opt(c.to(x.head).success).getOrElse(conversionErrorMessage(key,x.head,m.erasure.getName).invalid)
-    }) getOrElse (noValueErrorMessage(key).missing)
-  }
+                  conversionErrorMessage:(String,String,String)=>String = defaultConversionMessage _)(implicit c:Conversion[T], m:Manifest[T]):RequestLogger[T] =
+    mkRequestLogger((params.get(key).flatMap(_.headOption.map(v => c.to(v).onFail(_ => conversionErrorMessage(key,v,m.erasure.getName).invalid)))) | (noValueErrorMessage(key).missing))
 
   def optional[T](key:String,
                   conversionErrorMessage:(String,String,String)=>String = defaultConversionMessage _)(implicit c:Conversion[T], m:Manifest[T]):RequestLogger[Option[T]] =
-    mkRequestLogger { (allCatch.either(params
-                                       .get(key)
-                                       .map(x => c.to(x.head)))
-                       .fold(fa = e => conversionErrorMessage(key,params(key).head,m.erasure.getName).invalid(e),
-                             fb = s => s.success)) }
+    mkRequestLogger(params.get(key).flatMap(_.headOption.map(s => c.to(s).onFail(_ => conversionErrorMessage(key,s,m.erasure.getName).invalid))).traverse[({type λ[α]=ValidationNEL[RequestError, α]})#λ,T](x => x))
 
   def requiredSeq[T](key:String,
                      noValueErrorMessage:String => String = defaultNoValueMessage _,
-                     conversionErrorMessage:(String,String,String)=>String = defaultConversionMessage _)(implicit c:Conversion[T], m:Manifest[T]):RequestLogger[Seq[T]] = mkRequestLogger {
-    (params.get(key).map {
-      x => allCatch.opt(c.toSeq(x).success).getOrElse(conversionErrorMessage(key,x.mkString("[",",","]"),m.erasure.getName).invalid)
-    }) getOrElse (noValueErrorMessage(key).missing)
-  }
+                     conversionErrorMessage:(String,String,String)=>String = defaultConversionMessage _)(implicit c:Conversion[T], m:Manifest[T]):RequestLogger[Seq[T]] =
+    mkRequestLogger((params.get(key).map(v => c.toSeq(v).onFail(e => conversionErrorMessage(key,e.list.mkString("[",", ","]"),m.erasure.getName).invalid))) | (noValueErrorMessage(key).missing))
 
   def optionalSeq[T](key:String,
                      conversionErrorMessage:(String,String,String)=>String = defaultConversionMessage _)(implicit c:Conversion[T], m:Manifest[T]):RequestLogger[Option[Seq[T]]] =
-    mkRequestLogger { (allCatch.either(params
-                                       .get(key)
-                                       .map(x => c.toSeq(x)))
-                       .fold(fa = e => conversionErrorMessage(key,params(key).mkString("[",",","]"),m.erasure.getName).invalid(e),
-                             fb = s => s.success)) }
-
+    mkRequestLogger(params.get(key).map(s => c.toSeq(s).onFail(e => conversionErrorMessage(key,e.list.mkString("[",", ","]"),m.erasure.getName).invalid)).traverse[({type λ[α]=ValidationNEL[RequestError, α]})#λ,Seq[T]](x => x))
 }
 
 object ParamOps {
@@ -93,13 +52,13 @@ object ParamOps {
   implicit def rlToStringParamOpsOptW(rl:RequestLogger[Option[String]]):StringParamOpsOptW = new StringParamOpsOptW(rl)
   implicit def rlToSeqStringParamOpsOptW(rl:RequestLogger[Option[Seq[String]]]):SeqStringParamOpsOptW = new SeqStringParamOpsOptW(rl)
 
-  def applyValidation[T](value:T,body:T => Validation[ERRORS[RequestError],T]):Validation[ERRORS[RequestError],T] = body(value)
+  def applyValidation[T](value:T,body:T => ValidationNEL[RequestError,T]):ValidationNEL[RequestError,T] = body(value)
 
   class ParamOpsW[T](rl:RequestLogger[T]) {
-    def check(body:T => Validation[ERRORS[RequestError],T]):RequestLogger[T] =
+    def check(body:T => ValidationNEL[RequestError,T]):RequestLogger[T] =
       rl.copy(over = rl.over.flatMap(x => applyValidation(x,body)))
 
-    def is[T](message:String)(body:T => Boolean):T => Validation[ERRORS[RequestError],T] = {
+    def is[T](message:String)(body:T => Boolean):T => ValidationNEL[RequestError,T] = {
       x => {
         allCatch.either(body(x)) match {
           case Left(t) => t.uncaught
@@ -114,7 +73,7 @@ object ParamOps {
     def filter(test:T => Boolean):RequestLogger[Seq[T]] =
       rl.copy(over = rl.over.map(_.filter(test)))
 
-    def isEmpty(value: => Validation[ERRORS[RequestError],Seq[T]]):RequestLogger[Seq[T]] =
+    def isEmpty(value: => ValidationNEL[RequestError,Seq[T]]):RequestLogger[Seq[T]] =
       rl.over.fold(failure = f => (f.head::f.tail) match {
                                     case (Missing(_)::Nil) => rl.copy(over=value)
                                     case _ => rl
@@ -128,7 +87,7 @@ object ParamOps {
 
     def ignoreEmpty:RequestLogger[Option[Seq[T]]] = isEmpty(None.success)
 
-    def isEmpty(value: => Validation[ERRORS[RequestError],Option[Seq[T]]]):RequestLogger[Option[Seq[T]]] =
+    def isEmpty(value: => ValidationNEL[RequestError,Option[Seq[T]]]):RequestLogger[Option[Seq[T]]] =
       rl.over.fold(failure = _ => rl,
                    success = {
                      case None => rl.copy(over=value)
@@ -159,7 +118,7 @@ object ParamOps {
   }
 
   class ParamOpsOptW[T](rl:RequestLogger[Option[T]]) {
-    def check(body:T => Validation[ERRORS[RequestError],T]):RequestLogger[Option[T]] =
+    def check(body:T => ValidationNEL[RequestError,T]):RequestLogger[Option[T]] =
       rl.over.fold(failure = _ => rl,
                    success = {
                      case None => rl

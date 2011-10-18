@@ -50,7 +50,7 @@ object Unfiltered extends Build {
     scalaVersion := "2.9.1",
     // publishTo := Some("Scala Tools Nexus" at "http://nexus.scala-tools.org/content/repositories/releases/"),
     publishSetting,
-    credentials += Credentials(Path.userHome / ".ivy2" / ".credentials"),
+    // credentials += Credentials(Path.userHome / ".ivy2" / ".credentials"),
     scalacOptions ++= Seq("-Xcheckinit", "-encoding", "utf8"),
     parallelExecution in Test := false // :( test servers collide on same port
   )
